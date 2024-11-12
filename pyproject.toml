@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name='whyis-weaviate'
+version='0.1.0'
+dependencies=[
+  'whyis',
+  'weaviate-client',
+  'sentence-transformers',
+  'scipy',
+  'numpy'
+]
+[tool.setuptools]
+packages=['whyis_weaviate','whyis_weaviate.entity_linker', 'whyis_weaviate.templates']
+
+[project.entry-points.whyis]
+whyis_weaviate = "whyis_weaviate:WeaviatePlugin"
+whyis_weaviate_entity_linker = "whyis_weaviate.entity_linker:WeaviateEntityResolverPlugin"
+
+[tool.setuptools.package-data]
+whyis_weaviate = ["static/**/*", "templates/*"]

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Check release version in Dockerfile and setup.py
+
+VERSION=`python -c "import tomlkit; print(tomlkit.load(open('pyproject.toml', 'rb'))['project']['version'])"`
+
+echo ${VERSION}
+
+python -m build . --wheel
