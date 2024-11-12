@@ -1,5 +1,5 @@
 {{
-  app.databases.milvus.similar(
+  app.databases.weaviate.similar(
         args.space,
         subject=this.identifier,
         graph=args.get("graph", None),

@@ -1,6 +1,6 @@
-{{app.databases.milvus.get(
+{{app.databases.weaviate.get(
     args.get('space',None),
-    uri=this.identifier,
+    subject=this.identifier,
     graph=args.get("graph", None)
   ) | tojson
 }}

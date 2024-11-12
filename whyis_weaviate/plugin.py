@@ -2,6 +2,8 @@ from whyis.plugin import Plugin, NanopublicationListener
 from whyis.database import driver
 from whyis.namespace import NS
 import weaviate
+from weaviate.classes.config import Configure, Property, DataType, VectorDistances, Tokenization
+from weaviate.classes.query import MetadataQuery
 from weaviate.embedded import EmbeddedOptions
 from flask import current_app
 import rdflib
@@ -11,6 +13,7 @@ from functools import reduce
 import numpy as np
 from weaviate.classes.query import Filter
 import functools
+import os
 
 whyis = NS.whyis
 
@@ -35,9 +38,11 @@ class VectorSpace:
         self.dimensions = reduce(lambda a, b: a*b, self.extent)
         print(self.extent, self.dimensions)
 
-        self.distance_metric = self.resource.value(whyis.hasDistanceMetric, Literal('cosine'))
+        self.distance_metric = self.resource.value(whyis.hasDistanceMetric)
         if self.distance_metric is not None:
             self.distance_metric = self.distance_metric.value
+        else:
+            self.distance_metric = VectorDistances.COSINE
         self.index_type = self.resource.value(whyis.hasIndexType)
         if self.index_type is not None:
             self.index_type = str(self.index_type)
@@ -47,26 +52,29 @@ class VectorSpace:
     @property
     def collection(self):
         if self._collection is None:
-            self.db.client.collections.create(
-                self.collection_id,
-                vector_index_config=Configure.VectorIndex.dynamic(
-                    distance_metric=VectorDistances.COSINE
-                ),
-                properties = [
-                    Property(
-                        name="subject", data_type=DataType.TEXT, tokenization=Tokenization.FIELD
+            self._collection = self.db.client.collections.get(self.collection_id)
+            if not self._collection.exists():
+                self.db.client.collections.create(
+                    self.collection_id,
+                    vector_index_config=Configure.VectorIndex.hnsw(
+                        distance_metric=VectorDistances.COSINE
                     ),
-                    Property(
-                        name="graph", data_type=DataType.TEXT, tokenization=Tokenization.FIELD
-                    ),
-                ]
-            )
+                    properties = [
+                        Property(
+                            name="subject", data_type=DataType.TEXT, tokenization=Tokenization.FIELD
+                        ),
+                        Property(
+                            name="graph", data_type=DataType.TEXT, tokenization=Tokenization.FIELD
+                        ),
+                    ]
+                )
+        print(self._collection)
         return self._collection
 
-    def prepare_result(self, o):
+    def prepare_result(self, o, include_vector=True):
         entity = dict(o.properties)
         entity['uuid'] = o.uuid
-        if hasattr(o, 'vector'):
+        if include_vector:
             entity['tensor'] = self.db.to_tensor(o.vector["default"], self.extent).tolist()
             
         return entity
@@ -74,16 +82,16 @@ class VectorSpace:
     def _create_filter(self, subject=None, graph=None):
         filters = [Filter.by_property(k).equal(v) for k,v
                    in [('subject',subject), ('graph',graph)]
-                   if kv[1] is not None]
+                   if v is not None]
         filters = functools.reduce(lambda a, b: a & b, filters)
-        
+        return filters
     
     def similar(self, subject, graph=None, limit=10, offset=0):
         matches = self.get(subject, graph, include_vector=False)
         results = []
         for match in matches:
             response = self.collection.query.near_object(
-                near_object = match['uuid']
+                near_object = match['uuid'],
                 limit=limit,
                 offset=offset,
                 include_vector=True,
@@ -94,7 +102,7 @@ class VectorSpace:
                 entity = self.prepare_result(o)
                 entity['distance'] = o.metadata.distance
                 entity['search_graph'] = graph
-                entity['search_uuid'] = match.uuid
+                entity['search_uuid'] = match['uuid']
                 entity['search_subject'] = subject
                 results.append(entity)
             if len(matches) > 1:
@@ -102,18 +110,19 @@ class VectorSpace:
         return results
 
     def get(self, subject=None, graph=None, include_vector=True):
-        response = self.collection.query.fetch_objects(self.create_filter(subject, graph),
+        f = self._create_filter(subject, graph)
+        response = self.collection.query.fetch_objects(filters=f,
                                                        include_vector=include_vector)
-        results = [self.prepare_result(r) for r in response.objects]
+        results = [self.prepare_result(r, include_vector) for r in response.objects]
 
         return results
 
     def search(self, tensor, limit, offset=0):
         vector, extent = self.db.to_vector(tensor)
-        response = jeopardy.query.near_vector(
+        response = self.collection.query.near_vector(
             near_vector=vector,
             limit=limit,
-            offset=offset
+            offset=offset,
             include_vector=True,
             return_metadata=MetadataQuery(distance=True)
         )
@@ -163,39 +172,16 @@ class WeaviateDatabase(NanopublicationListener):
         self.user = config.get('_username', None)
         self.password = config.get('_password', None)
         self.name = config.get('_name', "weaviate")
-        self.host = config.get('_hostname',None)
+        self.host = config.get('_hostname','localhost')
         self.port = config.get('_port', 8080)
         self.grpc_port = config.get('_grpc_port', 50051)
-        if host is None:
-            self.port = 8079
-            self.grpc_port = 50050
-            self.embedded = True
-        else:
-            self.embedded = False
 
-        if self.embedded:
-            try:
-                self.client = weaviate.connect_to_local(
-                    host=self.host,
-                    port=self.port,
-                    grpc_port = self.grpc_port
-                )
-            except weaviate.exceptions.WeaviateConnectionError:
-                self.client = weaviate.WeaviateClient(
-                    embedded_options=EmbeddedOptions(
-                        additional_env_vars={
-                            ASYNC_INDEXING = 'true'
-                        }
-                    )
-                )
-                self.client.connect()
-        else:
-            # TODO for authentication see https://weaviate.io/developers/weaviate/connections/connect-local
-            self.client = weaviate.connect_to_local(
-                host=self.host,
-                port=self.port,
-                grpc_port = self.grpc_port
-            )
+        print(self.host, self.port, self.grpc_port)
+        self.client = weaviate.connect_to_local(
+            host=self.host,
+            port=self.port,
+            grpc_port = self.grpc_port
+        )
 
     @property
     def spaces(self):
@@ -223,9 +209,16 @@ class WeaviateDatabase(NanopublicationListener):
                             "Tensor shape (%s) does not match schema tensor shape (%s)." % (extent, space.extent)
                         )
                     batch.add_object(
-                        properties = dict(subject = str(s), graph = str(nanopub.assertion.identifier))
+                        properties = dict(
+                            subject = str(s),
+                            graph = str(nanopub.assertion.identifier)
+                        ),
                         vector = vector
                     )
+            if len(space.collection.batch.failed_objects) > 0:
+                print("Failed objects!!")
+                for o in space.collection.batch.failed_objects:
+                    print(o.message)
 
     def on_retire(self, nanopub):
         collection.data.delete_many(where=Filter.by_property("graph").equal(str(nanopub.assertion.identifier)))
@@ -238,7 +231,7 @@ class WeaviateDatabase(NanopublicationListener):
             raise VectorDBException("Vector Space does not exist")
 
     def get(self, space=None, subject=None, graph=None):
-        spaces = [space] if space is not None or len(space) == 0 else self.spaces.keys()
+        spaces = [space] if space is not None and len(space) == 0 else self.spaces.keys()
         try:
             spaces = [self.spaces[rdflib.URIRef(s)] for s in spaces]
             print(spaces)

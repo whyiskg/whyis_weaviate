@@ -1,4 +1,4 @@
-{{app.databases.milvus.search(
+{{app.databases.weaviate.search(
     this.identifier,
     args.vector                  | fromjson, 
     limit=args.get('limit', 10)  | int,
