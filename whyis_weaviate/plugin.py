@@ -36,7 +36,7 @@ class VectorSpace:
         self.extent = self.resource.value(NS.whyis.hasExtent)
         self.extent = tuple(json.loads(str(self.extent)))
         self.dimensions = reduce(lambda a, b: a*b, self.extent)
-        print(self.extent, self.dimensions)
+        #print(self.extent, self.dimensions)
 
         self.distance_metric = self.resource.value(whyis.hasDistanceMetric)
         if self.distance_metric is not None:
@@ -68,7 +68,7 @@ class VectorSpace:
                         ),
                     ]
                 )
-        print(self._collection)
+        #print(self._collection)
         return self._collection
 
     def prepare_result(self, o, include_vector=True):
@@ -234,7 +234,7 @@ class WeaviateDatabase(NanopublicationListener):
         spaces = [space] if space is not None and len(space) == 0 else self.spaces.keys()
         try:
             spaces = [self.spaces[rdflib.URIRef(s)] for s in spaces]
-            print(spaces)
+            #print(spaces)
         except KeyError:
             raise VectorDBException("Vector Space does not exist")
 
@@ -247,7 +247,7 @@ class WeaviateDatabase(NanopublicationListener):
         spaces = [space] if space is not None or len(space) == 0 else self.spaces.keys()
         try:
             spaces = [self.spaces[rdflib.URIRef(s)] for s in spaces]
-            print(spaces)
+            #print(spaces)
         except KeyError:
             raise VectorDBException("Vector Space does not exist")
 
@@ -265,7 +265,7 @@ class WeaviateDatabase(NanopublicationListener):
 
     def parse_vector(self, node):
         data = self.vector_parsers[node.datatype](node.value)
-        print(type(data))
+        #print(type(data))
         if not isinstance(data, dict):
             data = dict(tensor=data)
         return data

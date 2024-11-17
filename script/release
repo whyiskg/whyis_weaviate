@@ -6,7 +6,7 @@ VERSION=`python -c "import tomlkit; print(tomlkit.load(open('pyproject.toml', 'r
 
 echo ${VERSION}
 
-twine upload dist/whyis_milvus-${VERSION}-py3-none-any.whl
+twine upload dist/whyis_weaviate-${VERSION}-py3-none-any.whl
 
 git tag -f v${VERSION}
 
