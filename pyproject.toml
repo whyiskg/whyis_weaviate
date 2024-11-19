@@ -7,7 +7,7 @@ name='whyis-weaviate'
 version='0.1.1'
 dependencies=[
   'whyis',
-  'weaviate-client',
+#  'weaviate-client',
   'sentence-transformers',
   'scipy',
   'numpy'
